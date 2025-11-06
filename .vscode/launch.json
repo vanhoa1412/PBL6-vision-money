@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-LedgerApplication<ledger>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.pocketvision.ledger.LedgerApplication",
+            "projectName": "ledger",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

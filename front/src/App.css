@@ -1,0 +1,34 @@
+#root {
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.container {
+  width: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.status-indicator {
+  padding: 10px;
+  margin: 20px auto;
+  border-radius: 5px;
+  max-width: 300px;
+}
+
+.status-success {
+  background-color: #4caf50;
+  color: white;
+}
+
+.status-error {
+  background-color: #f44336;
+  color: white;
+}
+
+.status-loading {
+  background-color: #2196f3;
+  color: white;
+}
