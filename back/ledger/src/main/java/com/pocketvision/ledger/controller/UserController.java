@@ -6,6 +6,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
@@ -28,6 +30,39 @@ public class UserController {
             return ResponseEntity.ok(savedUser);
         } catch (RuntimeException e) {
             return ResponseEntity.notFound().build();
+        }
+    }
+
+    @PutMapping("/{id}/password")
+    public ResponseEntity<?> changePassword(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> passwordData) {
+        
+        String currentPassword = passwordData.get("currentPassword");
+        String newPassword = passwordData.get("newPassword");
+        
+        if (currentPassword == null || newPassword == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin mật khẩu"));
+        }
+        
+        try {
+            userService.changePassword(id, currentPassword, newPassword);
+            return ResponseEntity.ok(Map.of("message", "Đổi mật khẩu thành công"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/{id}/settings")
+    public ResponseEntity<?> updateSettings(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> settings) {
+        
+        try {
+            userService.updateUserSettings(id, settings);
+            return ResponseEntity.ok(Map.of("message", "Cập nhật cài đặt thành công"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 }

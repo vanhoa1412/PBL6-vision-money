@@ -19,8 +19,9 @@ export default function SearchExpense() {
     }
 
     try {
+      const userId = JSON.parse(localStorage.getItem("user"))?.id || 9;
       const res = await axios.get("http://localhost:8080/api/expenses/search", {
-        params: { userId: 1, keyword },
+      params: { userId, keyword },
       });
       setResults(res.data);
       setMessage("");

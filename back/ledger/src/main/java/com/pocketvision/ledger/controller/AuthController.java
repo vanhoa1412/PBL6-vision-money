@@ -1,9 +1,15 @@
 package com.pocketvision.ledger.controller;
 
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.pocketvision.ledger.model.User;
 import com.pocketvision.ledger.service.AuthService;
+
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -24,7 +30,7 @@ public class AuthController {
                     user.getFullName(),
                     user.getEmail(),
                     user.getRole().name(),
-                    user.getAvatarUrl() // Có thể null
+                    user.getAvatarUrl()
                 )
             );
         } catch (IllegalArgumentException e) {
@@ -42,7 +48,7 @@ public class AuthController {
                     user.getFullName(),
                     user.getEmail(),
                     user.getRole().name(),
-                    user.getAvatarUrl() // Có thể null
+                    user.getAvatarUrl()
                 )
             );
         } catch (IllegalArgumentException e) {

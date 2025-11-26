@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { User, Mail, Lock, Shield, Loader2 } from "lucide-react";
+import { User, Mail, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Separator } from "@/components/ui/separator";
 
 const Profile = () => {
   const { toast } = useToast();
@@ -17,16 +16,12 @@ const Profile = () => {
     fullName: "",
     email: "",
     avatarUrl: "",
-    currentPassword: "",
-    newPassword: "",
-    confirmPassword: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const storedUser = JSON.parse(localStorage.getItem("user"));
   const userId = storedUser?.id;
-
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -37,9 +32,6 @@ const Profile = () => {
           fullName: res.data.fullName || "",
           email: res.data.email || "",
           avatarUrl: res.data.avatarUrl || "",
-          currentPassword: "",
-          newPassword: "",
-          confirmPassword: "",
         });
       } catch (err) {
         console.error(err);
@@ -53,9 +45,8 @@ const Profile = () => {
       }
     };
     fetchUser();
-  }, []);
+  }, [userId, toast]);
 
-  // --- Cập nhật thông tin cá nhân ---
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
 
@@ -82,6 +73,11 @@ const Profile = () => {
         fullName: formData.fullName,
         avatarUrl: formData.avatarUrl,
       });
+      
+      // Cập nhật thông tin user trong localStorage
+      const updatedUser = { ...storedUser, fullName: formData.fullName, avatarUrl: formData.avatarUrl };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      
       toast({
         title: "✅ Cập nhật thành công!",
         description: "Thông tin cá nhân đã được lưu lại.",
@@ -91,47 +87,6 @@ const Profile = () => {
       toast({
         title: "Cập nhật thất bại",
         description: "Không thể lưu thay đổi.",
-        variant: "destructive",
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // --- Đổi mật khẩu ---
-  const handleChangePassword = async (e) => {
-    e.preventDefault();
-
-    if (formData.newPassword !== formData.confirmPassword) {
-      toast({
-        title: "Lỗi",
-        description: "Mật khẩu mới không khớp!",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setSaving(true);
-      await axios.put(`http://localhost:8080/api/users/${userId}/password`, {
-        currentPassword: formData.currentPassword,
-        newPassword: formData.newPassword,
-      });
-      toast({
-        title: "Đổi mật khẩu thành công!",
-        description: "Mật khẩu đã được cập nhật.",
-      });
-      setFormData({
-        ...formData,
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-    } catch (err) {
-      console.error(err);
-      toast({
-        title: "Thất bại",
-        description: "Không thể đổi mật khẩu.",
         variant: "destructive",
       });
     } finally {
@@ -151,7 +106,10 @@ const Profile = () => {
   if (loading)
     return (
       <Layout>
-        <div className="p-10 text-center text-gray-500">Đang tải thông tin...</div>
+        <div className="p-10 text-center text-gray-500">
+          <Loader2 className="animate-spin h-8 w-8 mx-auto mb-2" />
+          Đang tải thông tin...
+        </div>
       </Layout>
     );
 
@@ -161,7 +119,7 @@ const Profile = () => {
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">Thông tin cá nhân</h1>
           <p className="text-muted-foreground">
-            Quản lý thông tin tài khoản và bảo mật
+            Quản lý thông tin tài khoản và hồ sơ cá nhân
           </p>
         </div>
 
@@ -185,13 +143,15 @@ const Profile = () => {
                 </Avatar>
                 <h3 className="font-semibold text-lg mb-1">{formData.fullName}</h3>
                 <p className="text-sm text-muted-foreground mb-4">{formData.email}</p>
+                <div className="text-xs text-muted-foreground">
+                  Thành viên từ {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('vi-VN') : '---'}
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Thông tin cá nhân */}
+          <div className="lg:col-span-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -202,29 +162,39 @@ const Profile = () => {
               <CardContent>
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Họ và tên</Label>
+                    <Label htmlFor="fullName">Họ và tên</Label>
                     <Input
+                      id="fullName"
                       value={formData.fullName}
                       onChange={(e) =>
                         setFormData({ ...formData, fullName: e.target.value })
                       }
+                      placeholder="Nhập họ và tên của bạn"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input value={formData.email} disabled />
+                    <Label htmlFor="email">Email</Label>
+                    <Input 
+                      id="email"
+                      value={formData.email} 
+                      disabled 
+                    />
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Link ảnh đại diện</Label>
+                    <Label htmlFor="avatarUrl">Link ảnh đại diện</Label>
                     <Input
-                      placeholder="https://..."
+                      id="avatarUrl"
+                      placeholder="https://example.com/avatar.jpg"
                       value={formData.avatarUrl}
                       onChange={(e) =>
                         setFormData({ ...formData, avatarUrl: e.target.value })
                       }
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Nhập URL ảnh đại diện từ bên ngoài
+                    </p>
                   </div>
 
                   <Button type="submit" className="w-full" disabled={saving}>
@@ -234,97 +204,6 @@ const Profile = () => {
                 </form>
               </CardContent>
             </Card>
-
-            {/* Đổi mật khẩu */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="h-5 w-5" />
-                  Đổi mật khẩu
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleChangePassword} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Mật khẩu hiện tại</Label>
-                    <Input
-                      type="password"
-                      value={formData.currentPassword}
-                      onChange={(e) =>
-                        setFormData({ ...formData, currentPassword: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Mật khẩu mới</Label>
-                    <Input
-                      type="password"
-                      value={formData.newPassword}
-                      onChange={(e) =>
-                        setFormData({ ...formData, newPassword: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Xác nhận mật khẩu mới</Label>
-                    <Input
-                      type="password"
-                      value={formData.confirmPassword}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          confirmPassword: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <Button type="submit" variant="outline" disabled={saving}>
-                    {saving && <Loader2 className="animate-spin h-4 w-4 mr-2" />}
-                    Đổi mật khẩu
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            {/* Security */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Bảo mật
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Xác thực hai yếu tố (2FA)</p>
-                      <p className="text-sm text-muted-foreground">
-                        Tăng cường bảo mật cho tài khoản
-                      </p>
-                    </div>
-                    <Button variant="outline">
-                      Bật 2FA
-                    </Button>
-                  </div>
-                  
-                  <Separator />
-                  
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Thiết bị đăng nhập</p>
-                      <p className="text-sm text-muted-foreground">
-                        Quản lý các thiết bị đã đăng nhập
-                      </p>
-                    </div>
-                    <Button variant="outline">
-                      Xem chi tiết
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          
           </div>
         </div>
       </div>

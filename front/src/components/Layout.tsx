@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -8,12 +8,14 @@ import {
   PiggyBank,
   FileText,
   BarChart3,
-  Sparkles,
+  Bell,
   User,
   LogOut,
 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import axios from "axios";
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,20 +28,41 @@ const Layout = ({ children }: LayoutProps) => {
   const user = storage.user.get();
 
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     if (user) {
-      const url = user.avatarUrl
-        ? user.avatarUrl
-        : null;
+      const url = user.avatarUrl ? user.avatarUrl : null;
       const img = new Image();
       img.src = url;
       img.onload = () => setAvatarUrl(url);
       img.onerror = () => setAvatarUrl(null);
+
+      // Fetch unread notifications count
+      fetchUnreadCount();
+      
+      // GIẢM polling: mỗi 30 giây thay vì real-time
+      const interval = setInterval(fetchUnreadCount, 30000);
+      return () => clearInterval(interval);
     } else {
       setAvatarUrl(null);
+      setUnreadCount(0);
     }
   }, [user]);
+
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const userId = Number(localStorage.getItem("userId"));
+      if (userId) {
+        const response = await axios.get(
+          `http://localhost:8080/api/notifications/unread-count?userId=${userId}`
+        );
+        setUnreadCount(response.data.count);
+      }
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  }, []);
 
   const handleLogout = () => {
     storage.user.remove();
@@ -56,7 +79,12 @@ const Layout = ({ children }: LayoutProps) => {
     { path: "/budgets", label: "Ngân sách", icon: PiggyBank },
     { path: "/invoices", label: "Hóa đơn", icon: FileText },
     { path: "/reports", label: "Báo cáo", icon: BarChart3 },
-    { path: "/ai-suggestions", label: "AI Gợi ý", icon: Sparkles },
+    { 
+      path: "/notifications", 
+      label: "Thông báo", 
+      icon: Bell,
+      badge: unreadCount > 0 ? unreadCount : undefined
+    },
   ];
 
   return (
@@ -88,7 +116,7 @@ const Layout = ({ children }: LayoutProps) => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all relative ${
                     isActive
                       ? "bg-primary text-primary-foreground shadow-elegant"
                       : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -96,6 +124,14 @@ const Layout = ({ children }: LayoutProps) => {
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}
+                  {item.badge && item.badge > 0 && (
+                    <Badge 
+                      variant="destructive" 
+                      className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs animate-pulse"
+                    >
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </Badge>
+                  )}
                 </Link>
               );
             })}
@@ -154,13 +190,23 @@ const Layout = ({ children }: LayoutProps) => {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all ${
+                className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all relative ${
                   isActive
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className="h-5 w-5" />
+                <div className="relative">
+                  <Icon className="h-5 w-5" />
+                  {item.badge && item.badge > 0 && (
+                    <Badge 
+                      variant="destructive" 
+                      className="absolute -top-2 -right-2 h-4 w-4 flex items-center justify-center p-0 text-xs"
+                    >
+                      {item.badge > 9 ? '9+' : item.badge}
+                    </Badge>
+                  )}
+                </div>
                 <span className="text-xs">{item.label}</span>
               </Link>
             );

@@ -60,38 +60,50 @@ public class ExpenseController {
 
     @PutMapping("/{id}")
     public ResponseEntity<?> updateExpense(@PathVariable Long id, @RequestBody Expense expense) {
-        if (expense.getTotalAmount() == null) {
-            return ResponseEntity.badRequest().body("Số tiền không được để trống");
-        }
-        if (expense.getTotalAmount() <= 0) {
-            return ResponseEntity.badRequest().body("Số tiền phải lớn hơn 0");
-        }
-        if (expense.getTotalAmount() > 9999999999.0) {
-            return ResponseEntity.badRequest().body("Giá trị vượt mức cho phép");
-        }
-        if (expense.getCategoryId() == null) {
-            return ResponseEntity.badRequest().body("Vui lòng chọn danh mục");
-        }
-        if (expense.getNote() != null && expense.getNote().length() > 255) {
-            return ResponseEntity.badRequest().body("Nội dung ghi chú quá dài");
-        }
+        try {
+            if (expense.getTotalAmount() == null) {
+                return ResponseEntity.badRequest().body("Số tiền không được để trống");
+            }
+            if (expense.getTotalAmount() <= 0) {
+                return ResponseEntity.badRequest().body("Số tiền phải lớn hơn 0");
+            }
+            if (expense.getTotalAmount() > 9999999999.0) {
+                return ResponseEntity.badRequest().body("Giá trị vượt mức cho phép");
+            }
+            if (expense.getCategoryId() == null) {
+                return ResponseEntity.badRequest().body("Vui lòng chọn danh mục");
+            }
+            if (expense.getNote() != null && expense.getNote().length() > 255) {
+                return ResponseEntity.badRequest().body("Nội dung ghi chú quá dài");
+            }
 
-        Expense updated = expenseService.updateExpense(id, expense);
-        if (updated == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy chi tiêu để cập nhật");
+            Expense updated = expenseService.updateExpense(id, expense);
+            if (updated == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy chi tiêu để cập nhật");
+            }
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi server khi cập nhật chi tiêu: " + e.getMessage());
         }
-        return ResponseEntity.ok(updated);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteExpense(@PathVariable Long id) {
-        Expense expense = expenseService.getExpenseById(id);
-        if (expense == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy chi tiêu để xóa");
-        }
+        try {
+            Expense expense = expenseService.getExpenseById(id);
+            if (expense == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Không tìm thấy chi tiêu để xóa");
+            }
 
-        expenseService.deleteExpense(id);
-        return ResponseEntity.ok("Đã xóa chi tiêu thành công");
+            expenseService.deleteExpense(id);
+            return ResponseEntity.ok("Đã xóa chi tiêu thành công");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi server khi xóa chi tiêu: " + e.getMessage());
+        }
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

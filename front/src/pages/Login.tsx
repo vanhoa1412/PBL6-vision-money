@@ -55,6 +55,7 @@ const Login = () => {
           created_at: new Date().toISOString(),
         })
       );
+      localStorage.setItem("userId", user.id);
 
       toast({
         title: "Đăng nhập thành công!",

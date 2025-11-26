@@ -40,6 +40,9 @@ const Budgets = () => {
     limitAmount: "",
   });
 
+  // ✅ Thêm state để hiển thị lỗi vào DOM
+  const [errorMessage, setErrorMessage] = useState("");
+
   useEffect(() => {
     loadData();
   }, []);
@@ -75,6 +78,42 @@ const Budgets = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.id) return;
+    setErrorMessage(""); // reset lỗi cũ
+
+    const amount = parseFloat(formData.limitAmount);
+
+    // ✅ Bỏ trống
+    if (!formData.limitAmount.trim()) {
+      setErrorMessage("Vui lòng nhập số tiền ngân sách");
+      toast({
+        title: "Lỗi",
+        description: "Vui lòng nhập số tiền ngân sách",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // ✅ Bằng 0
+    if (isNaN(amount) || amount === 0) {
+      setErrorMessage("Ngân sách phải lớn hơn 0");
+      toast({
+        title: "Lỗi",
+        description: "Ngân sách phải lớn hơn 0",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // ✅ Số âm
+    if (amount < 0) {
+      setErrorMessage("Số tiền không hợp lệ");
+      toast({
+        title: "Lỗi",
+        description: "Số tiền không hợp lệ",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
       if (isEditing && editBudgetId) {
@@ -90,6 +129,7 @@ const Budgets = () => {
           (b) => b.categoryId === Number(formData.categoryId)
         );
         if (existing) {
+          setErrorMessage("Ngân sách cho danh mục này đã tồn tại.");
           toast({
             title: "Lỗi",
             description: "Ngân sách cho danh mục này đã tồn tại.",
@@ -114,7 +154,11 @@ const Budgets = () => {
     } catch (error: any) {
       toast({
         title: "Lỗi",
-        description: error.response?.data || "Không thể lưu ngân sách",
+        description:
+          error.response?.data?.message ||
+          (typeof error.response?.data === "string"
+            ? error.response.data
+            : "Không thể lưu ngân sách"),
         variant: "destructive",
       });
     }
@@ -197,16 +241,21 @@ const Budgets = () => {
                     required
                     disabled={isEditing}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Chọn danh mục" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id.toString()}>
-                          {cat.icon} {cat.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
+                    <SelectTrigger id="categoryDropdown">
+                        <SelectValue placeholder="Chọn danh mục" />
+                      </SelectTrigger>
+
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem
+                            key={cat.id}
+                            data-testid={`category-${cat.id}`}
+                            value={cat.id.toString()} >
+                            {cat.icon} {cat.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+
                   </Select>
                 </div>
 
@@ -226,6 +275,12 @@ const Budgets = () => {
                     placeholder="0"
                     required
                   />
+                  {/* ✅ Hiển thị lỗi để Selenium kiểm tra */}
+                  {errorMessage && (
+                    <p className="text-red-500 text-sm mt-2" id="error-message">
+                      {errorMessage}
+                    </p>
+                  )}
                 </div>
 
                 <Button

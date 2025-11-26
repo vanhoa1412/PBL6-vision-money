@@ -15,11 +15,13 @@ import Invoices from "./pages/Invoices";
 import UploadInvoice from "./pages/UploadInvoice";
 import Reports from "./pages/Reports";
 import AISuggestions from "./pages/AISuggestions";
+import Notifications from "./pages/Notifications";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import Categories from "./pages/Categories";
 import SearchExpenses from "./pages/SearchExpenses";
 import FillExpense from "./pages/FillExpense";
+import Settings from './pages/Settings';
 
 const queryClient = new QueryClient();
 
@@ -42,7 +44,9 @@ const App = () => (
           <Route path="/invoices/upload" element={<UploadInvoice />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/ai-suggestions" element={<AISuggestions />} />
+          <Route path="/Notifications" element={<Notifications />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="/categories" element={<Categories />} />
           <Route path="/search" element={<SearchExpenses />} />
           <Route path="/fill" element={<FillExpense />} />
