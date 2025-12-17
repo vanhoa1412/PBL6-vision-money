@@ -14,74 +14,66 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import axiosClient from "@/lib/axios-client";
+import { RefreshCw, Save, X } from "lucide-react";
 
 const EditExpense = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { id } = useParams(); // lấy id từ URL
+  const { id } = useParams(); 
 
   const [formData, setFormData] = useState({
-    store_name: "",
-    category_id: "",
-    total_amount: "",
-    expense_date: "",
-    payment_method: "CASH",
+    storeName: "",
+    categoryId: "",
+    totalAmount: "",
+    expenseDate: "",
+    paymentMethod: "CASH",
     note: "",
   });
 
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const API_BASE = "http://localhost:8080/api";
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (!user.id) {
-      toast({
-        title: "Bạn chưa đăng nhập",
-        description: "Vui lòng đăng nhập để chỉnh sửa chi tiêu.",
-        variant: "destructive",
-      });
       navigate("/login");
       return;
     }
 
-    loadExpense(user.id);
-    loadCategories(user.id);
-  }, []);
-
-  const loadCategories = async (userId: number) => {
-    try {
-      const res = await fetch(`${API_BASE}/categories?userId=${userId}`);
-      const data = await res.json();
-      setCategories(data);
-    } catch {
-      toast({
-        title: "Lỗi tải danh mục",
-        variant: "destructive",
-      });
+    if (id) {
+      loadData();
     }
-  };
+  }, [user.id, id]);
 
-  const loadExpense = async (userId: number) => {
+  const loadData = async () => {
     try {
-      const res = await fetch(`${API_BASE}/expenses/${id}`);
-      if (!res.ok) throw new Error("Không tìm thấy chi tiêu");
-      const e = await res.json();
+      setLoading(true);
+      
+      const [categoriesRes, expenseRes] = await Promise.all([
+        axiosClient.get(`/categories`, { params: { userId: user.id } }),
+        axiosClient.get(`/expenses/${id}`),
+      ]);
 
+      setCategories(categoriesRes.data);
+
+      const e = expenseRes.data;
       setFormData({
-        store_name: e.storeName || "",
-        category_id: e.categoryId ? String(e.categoryId) : "",
-        total_amount: e.totalAmount ? String(e.totalAmount) : "",
-        expense_date: e.expenseDate || "",
-        payment_method: e.paymentMethod || "CASH",
+        storeName: e.storeName || "",
+        categoryId: e.categoryId ? String(e.categoryId) : "",
+        totalAmount: e.totalAmount ? String(e.totalAmount) : "",
+        expenseDate: e.expenseDate || new Date().toISOString().split("T")[0],
+        paymentMethod: e.paymentMethod || "CASH",
         note: e.note || "",
-    });
+      });
 
     } catch (error: any) {
+      console.error("Lỗi tải dữ liệu:", error);
       toast({
-        title: "Lỗi tải chi tiêu",
-        description: error.message,
+        title: "Không tìm thấy chi tiêu",
+        description: "Khoản chi tiêu này có thể đã bị xóa.",
         variant: "destructive",
       });
       navigate("/expenses");
@@ -92,89 +84,108 @@ const EditExpense = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (!user.id) return;
 
-    try {
-      const res = await fetch(`${API_BASE}/expenses/${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            userId: user.id,
-            categoryId: formData.category_id ? parseInt(formData.category_id) : null,
-            storeName: formData.store_name,
-            totalAmount: parseFloat(formData.total_amount),
-            paymentMethod: formData.payment_method,
-            note: formData.note,
-            expenseDate: formData.expense_date,
-            }),
+    const amount = parseFloat(formData.totalAmount);
+    if (isNaN(amount) || amount <= 0) {
+        toast({
+            title: "Lỗi dữ liệu",
+            description: "Số tiền phải lớn hơn 0.",
+            variant: "destructive",
         });
+        return;
+    }
+    if (!formData.categoryId) {
+        toast({
+            title: "Lỗi dữ liệu",
+            description: "Vui lòng chọn danh mục.",
+            variant: "destructive",
+        });
+        return;
+    }
 
+    try {
+      setIsSubmitting(true);
 
-      if (!res.ok) {
-        const text = await res.text();
-        try {
-          const json = JSON.parse(text);
-          throw new Error(json?.message || json?.error || text || "Không thể cập nhật chi tiêu");
-        } catch {
-          throw new Error(text || "Không thể cập nhật chi tiêu");
-        }
-      }
-
+      await axiosClient.put(`/expenses/${id}`, {
+        userId: user.id,
+        categoryId: Number(formData.categoryId),
+        storeName: formData.storeName,
+        totalAmount: amount,
+        paymentMethod: formData.paymentMethod,
+        note: formData.note,
+        expenseDate: formData.expenseDate,
+      });
 
       toast({
         title: "Cập nhật thành công!",
-        description: "Chi tiêu đã được lưu lại.",
+        description: "Thông tin chi tiêu đã được lưu lại.",
       });
+      
       navigate("/expenses");
+
     } catch (error: any) {
+      console.error("Lỗi cập nhật:", error);
+      const msg = error.response?.data?.message || error.response?.data || "Có lỗi xảy ra khi cập nhật.";
+      
       toast({
         title: "Lỗi cập nhật",
-        description: error.message,
+        description: typeof msg === "string" ? msg : "Vui lòng thử lại sau.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   if (loading)
     return (
       <Layout>
-        <p className="text-center text-muted-foreground">Đang tải dữ liệu...</p>
+        <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
+            <RefreshCw className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-muted-foreground">Đang tải dữ liệu...</p>
+        </div>
       </Layout>
     );
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto p-4 md:p-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">Chỉnh sửa chi tiêu</h1>
           <p className="text-muted-foreground">
-            Cập nhật thông tin chi tiêu đã chọn
+            Cập nhật thông tin chi tiêu ID: #{id}
           </p>
         </div>
 
-        <Card className="shadow-md">
+        <Card className="shadow-md border-2">
           <CardHeader>
-            <CardTitle>Thông tin chi tiêu</CardTitle>
+            <CardTitle>Thông tin chi tiết</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <Label>Tên cửa hàng / mô tả</Label>
+              
+              {/* Tên cửa hàng */}
+              <div className="space-y-2">
+                <Label htmlFor="storeName">Tên cửa hàng / Nội dung <span className="text-red-500">*</span></Label>
                 <Input
-                  value={formData.store_name}
+                  id="storeName"
+                  value={formData.storeName}
                   onChange={(e) =>
-                    setFormData({ ...formData, store_name: e.target.value })
+                    setFormData({ ...formData, storeName: e.target.value })
                   }
+                  placeholder="VD: Siêu thị, Tiền nhà..."
+                  required
                 />
               </div>
 
-              <div>
-                <Label>Danh mục</Label>
+              {/* Danh mục */}
+              <div className="space-y-2">
+                <Label>Danh mục <span className="text-red-500">*</span></Label>
                 <Select
-                  value={formData.category_id}
+                  value={formData.categoryId}
                   onValueChange={(value) =>
-                    setFormData({ ...formData, category_id: value })
+                    setFormData({ ...formData, categoryId: value })
                   }
                 >
                   <SelectTrigger>
@@ -190,56 +201,101 @@ const EditExpense = () => {
                 </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Ngày chi tiêu</Label>
+              {/* Ngày và Tiền */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Ngày chi tiêu <span className="text-red-500">*</span></Label>
                   <Input
                     type="date"
-                    value={formData.expense_date}
+                    value={formData.expenseDate}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        expense_date: e.target.value,
+                        expenseDate: e.target.value,
                       })
                     }
+                    required
                   />
                 </div>
-                <div>
-                  <Label>Số tiền</Label>
+                <div className="space-y-2">
+                  <Label>Số tiền (VNĐ) <span className="text-red-500">*</span></Label>
                   <Input
                     type="number"
-                    value={formData.total_amount}
+                    min="0"
+                    step="1000"
+                    value={formData.totalAmount}
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        total_amount: e.target.value,
+                        totalAmount: e.target.value,
                       })
                     }
+                    required
                   />
                 </div>
               </div>
 
-              <div>
-                <Label>Ghi chú</Label>
+              {/* Phương thức thanh toán */}
+              <div className="space-y-2">
+                <Label>Phương thức thanh toán</Label>
+                <Select
+                  value={formData.paymentMethod}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, paymentMethod: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn phương thức" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">💵 Tiền mặt</SelectItem>
+                    <SelectItem value="CREDIT_CARD">💳 Thẻ tín dụng</SelectItem>
+                    <SelectItem value="BANK_TRANSFER">🏦 Chuyển khoản</SelectItem>
+                    <SelectItem value="E_WALLET">📱 Ví điện tử</SelectItem>
+                    <SelectItem value="OTHER">⚪ Khác</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Ghi chú */}
+              <div className="space-y-2">
+                <Label htmlFor="note">Ghi chú (tùy chọn)</Label>
                 <Textarea
+                  id="note"
                   value={formData.note}
                   onChange={(e) =>
                     setFormData({ ...formData, note: e.target.value })
                   }
+                  placeholder="Thêm ghi chú chi tiết..."
+                  rows={3}
                 />
               </div>
 
+              {/* Actions */}
               <div className="flex gap-4 pt-4">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => navigate("/expenses")}
-                  className="flex-1"
+                  className="flex-1 flex items-center gap-2"
+                  disabled={isSubmitting}
                 >
-                  Hủy
+                  <X className="h-4 w-4" /> Hủy bỏ
                 </Button>
-                <Button type="submit" className="flex-1 gradient-primary">
-                  Lưu thay đổi
+                <Button 
+                    type="submit" 
+                    className="flex-1 gradient-primary text-white flex items-center gap-2"
+                    disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Đang lưu...
+                    </>
+                  ) : (
+                    <>
+                        <Save className="h-4 w-4" /> Lưu thay đổi
+                    </>
+                  )}
                 </Button>
               </div>
             </form>

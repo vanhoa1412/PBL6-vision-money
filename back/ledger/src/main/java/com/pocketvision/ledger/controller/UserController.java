@@ -4,32 +4,50 @@ import com.pocketvision.ledger.model.User;
 import com.pocketvision.ledger.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:8081", allowCredentials = "true")
 public class UserController {
 
     private final UserService userService;
 
+    private void checkOwnership(Long resourceId) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String currentEmail = auth.getName(); 
+        
+        User user = userService.getUserById(resourceId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        
+        // Nếu email đang đăng nhập khác email của ID cần sửa -> Chặn
+        if (!user.getEmail().equals(currentEmail)) {
+            throw new RuntimeException("Bạn không có quyền sửa đổi thông tin người dùng này");
+        }
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<?> getUserById(@PathVariable Long id) {
         return userService.getUserById(id)
-                .map(ResponseEntity::ok)
+                .map(user -> ResponseEntity.ok(new UserResponse(user))) // Trả về DTO thay vì User full
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateUser(@PathVariable Long id, @RequestBody User updatedUser) {
+    public ResponseEntity<?> updateUser(
+            @PathVariable Long id, 
+            @RequestBody UserService.UpdateUserRequest request) { // Dùng DTO
         try {
-            User savedUser = userService.updateUser(id, updatedUser);
-            return ResponseEntity.ok(savedUser);
+            checkOwnership(id); // Bảo mật
+            User savedUser = userService.updateUser(id, request);
+            return ResponseEntity.ok(new UserResponse(savedUser));
         } catch (RuntimeException e) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
 
@@ -37,15 +55,16 @@ public class UserController {
     public ResponseEntity<?> changePassword(
             @PathVariable Long id,
             @RequestBody Map<String, String> passwordData) {
-        
-        String currentPassword = passwordData.get("currentPassword");
-        String newPassword = passwordData.get("newPassword");
-        
-        if (currentPassword == null || newPassword == null) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin mật khẩu"));
-        }
-        
         try {
+            checkOwnership(id); // Bảo mật
+            
+            String currentPassword = passwordData.get("currentPassword");
+            String newPassword = passwordData.get("newPassword");
+            
+            if (currentPassword == null || newPassword == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin mật khẩu"));
+            }
+            
             userService.changePassword(id, currentPassword, newPassword);
             return ResponseEntity.ok(Map.of("message", "Đổi mật khẩu thành công"));
         } catch (RuntimeException e) {
@@ -53,16 +72,9 @@ public class UserController {
         }
     }
 
-    @PutMapping("/{id}/settings")
-    public ResponseEntity<?> updateSettings(
-            @PathVariable Long id,
-            @RequestBody Map<String, Object> settings) {
-        
-        try {
-            userService.updateUserSettings(id, settings);
-            return ResponseEntity.ok(Map.of("message", "Cập nhật cài đặt thành công"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+    record UserResponse(Long id, String fullName, String email, String role, String avatarUrl) {
+        public UserResponse(User user) {
+            this(user.getId(), user.getFullName(), user.getEmail(), user.getRole().name(), user.getAvatarUrl());
         }
     }
 }

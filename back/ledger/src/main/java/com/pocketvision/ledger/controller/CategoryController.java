@@ -1,10 +1,10 @@
 package com.pocketvision.ledger.controller;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,7 +20,6 @@ import com.pocketvision.ledger.service.CategoryService;
 
 @RestController
 @RequestMapping("/api/categories")
-@CrossOrigin(origins = "http://localhost:8081", allowCredentials = "true")
 public class CategoryController {
 
     @Autowired
@@ -36,11 +35,14 @@ public class CategoryController {
         if (category.getUserId() == null || category.getName() == null || category.getName().trim().isEmpty()) {
             return ResponseEntity.badRequest().body("Thiếu thông tin: userId hoặc tên danh mục.");
         }
+        
+        if (category.getIcon() == null || category.getIcon().isEmpty()) {
+            category.setIcon("🏷️");
+        }
 
         Category saved = categoryService.createCategory(category);
         return ResponseEntity.ok(saved);
     }
-
 
     @PutMapping("/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody Category updated) {
@@ -53,7 +55,11 @@ public class CategoryController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
-        categoryService.deleteCategory(id);
-        return ResponseEntity.ok("Đã xóa danh mục thành công");
+        try {
+            categoryService.deleteCategory(id);
+            return ResponseEntity.ok(Map.of("message", "Đã xóa danh mục thành công"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Không thể xóa danh mục này vì dữ liệu liên quan."));
+        }
     }
 }

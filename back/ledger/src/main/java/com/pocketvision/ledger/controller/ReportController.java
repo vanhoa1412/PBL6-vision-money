@@ -11,7 +11,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/reports")
-@CrossOrigin(origins = "http://localhost:8081", allowCredentials = "true")
+// Đã bỏ @CrossOrigin (xử lý tại WebConfig)
 public class ReportController {
 
     @Autowired

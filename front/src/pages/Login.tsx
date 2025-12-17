@@ -13,6 +13,8 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { Wallet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+// Import service thay vì gọi fetch trực tiếp
+import { authService } from "@/services/auth.service"; 
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -26,48 +28,48 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8080/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-        credentials: "include",
-      });
+      // 1. Gọi API qua Service
+      const response = await authService.login({ email, password });
+      
+      // 2. Lấy dữ liệu từ response (Axios trả về data trong field .data)
+      // Cấu trúc trả về từ Backend: { accessToken: "...", user: { ... } }
+      const { accessToken, user } = response.data;
 
-      if (!response.ok) {
-        throw new Error("Login failed");
+      if (!accessToken || !user) {
+        throw new Error("Dữ liệu phản hồi từ server không hợp lệ");
       }
 
-      const user = await response.json();
-      if (!user.id || !user.fullName || !user.email) {
-        throw new Error("Dữ liệu người dùng không hợp lệ từ backend");
-      }
+      // 3. Chuẩn bị dữ liệu để lưu
+      // Quan trọng: Gộp accessToken vào object user để axios-client interceptor lấy được
+      const dataToSave = {
+        ...user,
+        accessToken: accessToken 
+      };
 
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: user.id,
-          fullName: user.fullName,
-          email: user.email,
-          role: user.role || "USER",
-          avatarUrl: user.avatarUrl || "",
-          created_at: new Date().toISOString(),
-        })
-      );
+      // 4. Lưu vào LocalStorage
+      localStorage.setItem("user", JSON.stringify(dataToSave));
+      
+      // Lưu thêm userId nếu logic cũ của bạn cần dùng riêng lẻ (tùy chọn)
       localStorage.setItem("userId", user.id);
 
       toast({
         title: "Đăng nhập thành công!",
-        description: `Chào mừng ${user.fullName}`,
+        description: `Chào mừng ${user.fullName} quay trở lại.`,
       });
 
+      // 5. Chuyển hướng
       navigate("/dashboard");
 
-    } catch (error) {
+    } catch (error: any) {
+      console.error("Login error:", error);
+      
+      // Xử lý thông báo lỗi từ Backend (nếu có)
+      // error.response.data thường chứa message lỗi từ Spring Boot
+      const errorMessage = error.response?.data || "Email hoặc mật khẩu không đúng.";
+      
       toast({
         title: "Đăng nhập thất bại!",
-        description: "Email hoặc mật khẩu không đúng.",
+        description: typeof errorMessage === 'string' ? errorMessage : "Vui lòng thử lại sau.",
         variant: "destructive",
       });
     } finally {

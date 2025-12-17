@@ -2,7 +2,7 @@ package com.pocketvision.ledger.controller;
 
 import com.pocketvision.ledger.model.Budget;
 import com.pocketvision.ledger.service.BudgetService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,20 +13,33 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/budgets")
-@CrossOrigin(origins = "http://localhost:8081", allowCredentials = "true")
+@RequiredArgsConstructor
 public class BudgetController {
 
-    @Autowired
-    private BudgetService budgetService;
+    private final BudgetService budgetService;
 
+    // 1. Lấy danh sách ngân sách của user (Có thể lọc theo tháng nếu truyền param)
     @GetMapping
-    public ResponseEntity<?> getBudgetsByUser(@RequestParam Long userId) {
+    public ResponseEntity<?> getBudgets(
+            @RequestParam Long userId,
+            @RequestParam(required = false) String monthYear) {
         try {
             if (userId == null) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin userId"));
             }
+
+            List<Budget> budgets;
             
-            List<Budget> budgets = budgetService.getAllBudgets(userId);
+            if (monthYear != null && !monthYear.trim().isEmpty()) {
+                if (!isValidMonthYear(monthYear)) {
+                    return ResponseEntity.badRequest().body(Map.of("message", "Định dạng tháng không hợp lệ (yyyy-MM)"));
+                }
+                budgets = budgetService.getBudgetsByMonth(userId, monthYear);
+            } else {
+                // Nếu không có monthYear -> Lấy tất cả (như cũ)
+                budgets = budgetService.getAllBudgets(userId);
+            }
+
             return ResponseEntity.ok(budgets);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -34,6 +47,32 @@ public class BudgetController {
         }
     }
 
+    // 2. API riêng để lấy theo tháng (giữ lại để tương thích với code cũ nếu cần)
+    @GetMapping("/month")
+    public ResponseEntity<?> getBudgetsByMonth(
+            @RequestParam Long userId,
+            @RequestParam String monthYear) {
+        try {
+            if (userId == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin userId"));
+            }
+            if (monthYear == null || monthYear.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin tháng/năm"));
+            }
+            if (!isValidMonthYear(monthYear)) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Định dạng tháng/năm không hợp lệ. Sử dụng format: yyyy-MM"));
+            }
+
+            List<Budget> monthlyBudgets = budgetService.getBudgetsByMonth(userId, monthYear);
+            return ResponseEntity.ok(monthlyBudgets);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Lỗi khi lấy ngân sách theo tháng: " + e.getMessage()));
+        }
+    }
+
+    // 3. Lấy chi tiết một ngân sách
     @GetMapping("/{id}")
     public ResponseEntity<?> getBudgetById(@PathVariable Long id) {
         try {
@@ -53,6 +92,7 @@ public class BudgetController {
         }
     }
 
+    // 4. Tạo mới ngân sách
     @PostMapping
     public ResponseEntity<?> createBudget(@RequestBody Budget budget) {
         try {
@@ -68,13 +108,16 @@ public class BudgetController {
             if (budget.getLimitAmount() == null) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng nhập số tiền ngân sách"));
             }
-
+            if (budget.getLimitAmount() <= 0) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Số tiền ngân sách phải lớn hơn 0"));
+            }
             if (!isValidMonthYear(budget.getMonthYear())) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Định dạng tháng/năm không hợp lệ. Sử dụng format: yyyy-MM"));
             }
 
             Budget created = budgetService.createBudget(budget);
             return ResponseEntity.ok(created);
+
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
@@ -83,6 +126,7 @@ public class BudgetController {
         }
     }
 
+    // 5. Cập nhật ngân sách
     @PutMapping("/{id}")
     public ResponseEntity<?> updateBudget(@PathVariable Long id, @RequestBody Budget updatedBudget) {
         try {
@@ -92,19 +136,13 @@ public class BudgetController {
             if (updatedBudget.getLimitAmount() == null) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng nhập số tiền ngân sách"));
             }
-            if (updatedBudget.getCategoryId() == null) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Vui lòng chọn danh mục"));
+            if (updatedBudget.getLimitAmount() <= 0) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Số tiền ngân sách phải lớn hơn 0"));
             }
-            if (updatedBudget.getMonthYear() == null || updatedBudget.getMonthYear().trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin tháng/năm"));
-            }
-
-            if (!isValidMonthYear(updatedBudget.getMonthYear())) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Định dạng tháng/năm không hợp lệ. Sử dụng format: yyyy-MM"));
-            }
-
+            
             Budget updated = budgetService.updateBudget(id, updatedBudget);
             return ResponseEntity.ok(updated);
+
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
@@ -113,6 +151,7 @@ public class BudgetController {
         }
     }
 
+    // 6. Xóa ngân sách
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteBudget(@PathVariable Long id) {
         try {
@@ -129,56 +168,20 @@ public class BudgetController {
                     .body(Map.of("message", "Lỗi khi xóa ngân sách: " + e.getMessage()));
         }
     }
-
-    @GetMapping("/month")
-    public ResponseEntity<?> getBudgetsByMonth(
-            @RequestParam Long userId,
-            @RequestParam String monthYear) {
-        try {
-            if (userId == null) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin userId"));
-            }
-            if (monthYear == null || monthYear.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Thiếu thông tin tháng/năm"));
-            }
-
-            if (!isValidMonthYear(monthYear)) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Định dạng tháng/năm không hợp lệ. Sử dụng format: yyyy-MM"));
-            }
-
-            List<Budget> allBudgets = budgetService.getAllBudgets(userId);
-            List<Budget> monthlyBudgets = allBudgets.stream()
-                    .filter(budget -> monthYear.equals(budget.getMonthYear()))
-                    .toList();
-
-            return ResponseEntity.ok(monthlyBudgets);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Lỗi khi lấy ngân sách theo tháng: " + e.getMessage()));
-        }
-    }
-
     private boolean isValidMonthYear(String monthYear) {
         if (monthYear == null || monthYear.length() != 7) {
             return false;
         }
         try {
-            String[] parts = monthYear.split("-");
-            if (parts.length != 2) {
+            if (!monthYear.matches("^\\d{4}-\\d{2}$")) {
                 return false;
             }
+            String[] parts = monthYear.split("-");
             int year = Integer.parseInt(parts[0]);
             int month = Integer.parseInt(parts[1]);
             return year >= 2000 && year <= 2100 && month >= 1 && month <= 12;
         } catch (NumberFormatException e) {
             return false;
         }
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<String> handleIllegalArgument(IllegalArgumentException ex) {
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(ex.getMessage());
     }
 }

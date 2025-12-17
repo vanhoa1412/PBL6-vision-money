@@ -1,19 +1,21 @@
 package com.pocketvision.ledger.service;
 
-import com.pocketvision.ledger.model.User;
-import com.pocketvision.ledger.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import java.util.Optional;
+
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.util.Optional;
+import com.pocketvision.ledger.model.User;
+import com.pocketvision.ledger.repository.UserRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
 public class AuthService {
 
     private final UserRepository userRepository;
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final PasswordEncoder passwordEncoder;
 
     public User register(String fullName, String email, String password) {
         if (userRepository.findByEmail(email).isPresent()) {

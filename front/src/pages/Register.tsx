@@ -5,8 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link, useNavigate } from "react-router-dom";
 import { Wallet } from "lucide-react";
-import { storage } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
+// Import service mới
+import { authService } from "@/services/auth.service";
 
 const Register = () => {
   const [fullName, setFullName] = useState("");
@@ -20,6 +21,7 @@ const Register = () => {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validation cơ bản
     if (password !== confirmPassword) {
       toast({
         title: "Lỗi",
@@ -32,33 +34,39 @@ const Register = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8080/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ fullName, email, password }),
-        credentials: 'include'
-      });
+      // 1. Gọi API đăng ký
+      const response = await authService.register({ fullName, email, password });
 
-      if (!response.ok) {
-        throw new Error('Registration failed');
+      // 2. Lấy dữ liệu (Backend trả về AuthResponse gồm accessToken + user)
+      const { accessToken, user } = response.data;
+
+      // 3. Tự động đăng nhập luôn (Lưu token vào storage)
+      if (accessToken && user) {
+        const dataToSave = {
+          ...user,
+          accessToken: accessToken
+        };
+        localStorage.setItem("user", JSON.stringify(dataToSave));
+        localStorage.setItem("userId", user.id); // Lưu riêng nếu cần
       }
 
-      const userData = await response.json();
-      
-      storage.user.set(userData);
-      
       toast({
         title: "Đăng ký thành công!",
-        description: "Tài khoản của bạn đã được tạo.",
+        description: "Tài khoản của bạn đã được tạo và tự động đăng nhập.",
       });
       
+      // 4. Chuyển hướng vào Dashboard ngay lập tức
       navigate("/dashboard");
-    } catch (error) {
+
+    } catch (error: any) {
+      console.error("Register error:", error);
+      
+      // Xử lý lỗi trả về từ Backend (ví dụ: Email đã tồn tại)
+      const errorMessage = error.response?.data || "Đăng ký thất bại. Vui lòng thử lại.";
+
       toast({
         title: "Đăng ký thất bại!",
-        description: "Email đã tồn tại hoặc có lỗi xảy ra.",
+        description: typeof errorMessage === 'string' ? errorMessage : "Có lỗi xảy ra",
         variant: "destructive"
       });
     } finally {

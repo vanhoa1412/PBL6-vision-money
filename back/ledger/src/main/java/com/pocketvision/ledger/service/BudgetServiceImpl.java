@@ -31,6 +31,13 @@ public class BudgetServiceImpl implements BudgetService {
     }
 
     @Override
+    public List<Budget> getBudgetsByMonth(Long userId, String monthYear) {
+        List<Budget> budgets = budgetRepository.findByUserIdAndMonthYear(userId, monthYear);
+        budgets.forEach(this::updateSpentAmount);
+        return budgets;
+    }
+
+    @Override
     public Optional<Budget> getBudget(Long id) {
         Optional<Budget> budget = budgetRepository.findById(id);
         budget.ifPresent(this::updateSpentAmount);
@@ -51,7 +58,7 @@ public class BudgetServiceImpl implements BudgetService {
                 budget.getUserId(), budget.getCategoryId(), budget.getMonthYear()
         );
         if (existing.isPresent()) {
-            throw new IllegalArgumentException("Ngân sách cho tháng này đã tồn tại");
+            throw new IllegalArgumentException("Ngân sách cho danh mục này trong tháng đã tồn tại");
         }
 
         budget.setSpentAmount(0.0);
@@ -73,8 +80,6 @@ public class BudgetServiceImpl implements BudgetService {
         }
 
         existing.setLimitAmount(updatedBudget.getLimitAmount());
-        existing.setCategoryId(updatedBudget.getCategoryId());
-        existing.setMonthYear(updatedBudget.getMonthYear());
         
         Budget updated = budgetRepository.save(existing);
         updateSpentAmount(updated);
@@ -97,16 +102,20 @@ public class BudgetServiceImpl implements BudgetService {
     }
 
     private Double calculateTotalSpentForBudget(Budget budget) {
-        YearMonth yearMonth = YearMonth.parse(budget.getMonthYear(), DateTimeFormatter.ofPattern("yyyy-MM"));
-        LocalDate startDate = yearMonth.atDay(1);
-        LocalDate endDate = yearMonth.atEndOfMonth();
+        try {
+            YearMonth yearMonth = YearMonth.parse(budget.getMonthYear(), DateTimeFormatter.ofPattern("yyyy-MM"));
+            LocalDate startDate = yearMonth.atDay(1);
+            LocalDate endDate = yearMonth.atEndOfMonth();
 
-        List<Expense> expenses = expenseRepository.findByUserIdAndCategoryIdAndExpenseDateBetween(
-            budget.getUserId(), budget.getCategoryId(), startDate, endDate
-        );
+            List<Expense> expenses = expenseRepository.findByUserIdAndCategoryIdAndExpenseDateBetween(
+                budget.getUserId(), budget.getCategoryId(), startDate, endDate
+            );
 
-        return expenses.stream()
-                .mapToDouble(Expense::getTotalAmount)
-                .sum();
+            return expenses.stream()
+                    .mapToDouble(Expense::getTotalAmount)
+                    .sum();
+        } catch (Exception e) {
+            return 0.0;
+        }
     }
 }

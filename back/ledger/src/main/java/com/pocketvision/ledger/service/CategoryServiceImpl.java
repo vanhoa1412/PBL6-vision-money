@@ -29,8 +29,9 @@ public class CategoryServiceImpl implements CategoryService {
         return categoryRepository.findById(id)
                 .map(existing -> {
                     existing.setName(updated.getName());
-                    existing.setColorHex(updated.getColorHex());
-                    existing.setIcon(updated.getIcon());
+                    if (updated.getColorHex() != null) existing.setColorHex(updated.getColorHex());
+                    if (updated.getIcon() != null) existing.setIcon(updated.getIcon());
+                    
                     return categoryRepository.save(existing);
                 })
                 .orElse(null);

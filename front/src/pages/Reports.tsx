@@ -2,11 +2,10 @@ import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, TrendingDown, Calendar, RefreshCw, BarChart3, PieChart, LineChart } from "lucide-react";
+import { Download, TrendingDown, Calendar, RefreshCw, BarChart3, PieChart, LineChart, Wallet, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import axios from "axios";
+import axiosClient from "@/lib/axios-client";
 
 // Import Chart.js
 import {
@@ -20,6 +19,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  ChartOptions
 } from 'chart.js';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 
@@ -36,6 +36,7 @@ ChartJS.register(
   Legend
 );
 
+// --- Interfaces ---
 interface CategoryStats {
   id: number;
   name: string;
@@ -45,14 +46,23 @@ interface CategoryStats {
   color_hex?: string;
 }
 
+interface Statistics {
+  averageDaily: number;
+  maxExpense: number;
+  minExpense: number;
+  expenseCount: number;
+}
+
 interface ReportsData {
   totalExpenses: number;
-  monthlyExpenses: number;
+  periodExpenses: number; // Backend trả về key này (tương đương monthlyExpenses cũ)
   categoryBreakdown: CategoryStats[];
+  statistics?: Statistics;
   period?: {
     startDate: string;
     endDate: string;
     expenseCount?: number;
+    days?: number;
   };
 }
 
@@ -65,85 +75,83 @@ interface ChartData {
     backgroundColor?: string | string[];
     borderColor?: string | string[];
     borderWidth?: number;
+    tension?: number;
   }>;
-  period?: {
-    startDate: string;
-    endDate: string;
-  };
 }
 
 const Reports = () => {
+  // State quản lý dữ liệu
   const [stats, setStats] = useState<ReportsData>({
     totalExpenses: 0,
-    monthlyExpenses: 0,
+    periodExpenses: 0,
     categoryBreakdown: [],
   });
+  
   const [chartData, setChartData] = useState<ChartData | null>(null);
+  
+  // State quản lý UI
   const [chartType, setChartType] = useState<string>("monthly");
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
   const { toast } = useToast();
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const userId = user?.id;
 
-  const userId = Number(localStorage.getItem("userId"));
-
+  // Effect tải dữ liệu khi component mount hoặc user đổi
   useEffect(() => {
     if (userId) {
       fetchReportsData();
+    } else {
+      setLoading(false);
+      setError("Vui lòng đăng nhập để xem báo cáo.");
+    }
+  }, [userId]);
+
+  // Effect riêng cho Chart để không reload toàn bộ trang khi đổi loại biểu đồ
+  useEffect(() => {
+    if (userId) {
       fetchChartData();
     }
   }, [userId, chartType]);
 
-  const fetchReportsData = async () => {
-    if (!userId) {
-      setError("Không tìm thấy ID người dùng");
-      setLoading(false);
-      return;
-    }
+  // --- API Calls ---
 
+  const fetchReportsData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await axios.get(
-        `http://localhost:8080/api/reports/summary?userId=${userId}`
-      );
-
-      const reportData = response.data;
-      
-      setStats({
-        totalExpenses: reportData.totalExpenses || 0,
-        monthlyExpenses: reportData.monthlyExpenses || 0,
-        categoryBreakdown: reportData.categoryBreakdown || [],
-        period: reportData.period
+      // Dùng axiosClient tự động gắn Token
+      const response = await axiosClient.get("/reports/summary", {
+        params: { userId }
       });
 
+      setStats(response.data);
     } catch (err: any) {
       console.error("Reports API error:", err);
-      const errorMessage = err.response?.data?.message || "Không thể tải dữ liệu báo cáo";
-      setError(errorMessage);
+      const msg = err.response?.data?.message || "Không thể tải dữ liệu báo cáo";
+      setError(msg);
+      toast({ title: "Lỗi", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
   const fetchChartData = async () => {
-    if (!userId) return;
-
     try {
       setChartLoading(true);
       
-      const response = await axios.get(
-        `http://localhost:8080/api/reports/charts?userId=${userId}&chartType=${chartType}`
-      );
+      const response = await axiosClient.get("/reports/charts", {
+        params: { userId, chartType }
+      });
 
-      const data = response.data;
-      setChartData(data);
-
+      setChartData(response.data);
     } catch (err: any) {
       console.error("Chart API error:", err);
       toast({
-        title: "Lỗi",
+        title: "Lỗi biểu đồ",
         description: "Không thể tải dữ liệu biểu đồ",
         variant: "destructive",
       });
@@ -152,45 +160,28 @@ const Reports = () => {
     }
   };
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("vi-VN", {
-      style: "currency",
-      currency: "VND",
-    }).format(amount);
-
   const handleExport = async (format: "pdf" | "excel") => {
-    if (!userId) {
-      toast({
-        title: "Lỗi",
-        description: "Vui lòng đăng nhập để xuất báo cáo",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (!userId) return;
 
     try {
       toast({
-        title: "Đang xuất báo cáo",
-        description: `Đang tạo tệp ${format.toUpperCase()}...`,
+        title: "Đang xử lý",
+        description: `Đang tạo báo cáo ${format.toUpperCase()}...`,
       });
 
-      const response = await axios.get(
-        `http://localhost:8080/api/reports/export?userId=${userId}&format=${format}`
-      );
+      const response = await axiosClient.get("/reports/export", {
+        params: { userId, format }
+      });
 
-      const responseData = response.data;
       toast({
         title: "Thông báo",
-        description: responseData.message || `Đã gửi yêu cầu xuất ${format.toUpperCase()}`,
+        description: response.data.message || `Đã gửi yêu cầu xuất ${format.toUpperCase()}`,
       });
-
     } catch (err: any) {
-      console.error("Export error:", err);
-      const errorMessage = err.response?.data?.message || `Tính năng xuất ${format.toUpperCase()} sẽ sớm có.`;
-      
       toast({
-        title: "Thông báo",
-        description: errorMessage,
+        title: "Xuất báo cáo thất bại",
+        description: err.response?.data?.message || "Lỗi không xác định",
+        variant: "destructive",
       });
     }
   };
@@ -200,96 +191,106 @@ const Reports = () => {
     fetchChartData();
   };
 
-  const handleChartTypeChange = (type: string) => {
-    setChartType(type);
+  // --- Helper Functions ---
+
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat("vi-VN", {
+      style: "currency",
+      currency: "VND",
+      maximumFractionDigits: 0,
+    }).format(amount);
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "";
+    return new Date(dateStr).toLocaleDateString("vi-VN");
   };
+
+  // --- Chart Rendering ---
 
   const renderChart = () => {
     if (chartLoading) {
       return (
-        <div className="h-64 flex items-center justify-center">
-          <div className="text-center">
-            <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2 text-muted-foreground" />
-            <p className="text-muted-foreground">Đang tải biểu đồ...</p>
-          </div>
+        <div className="h-72 flex flex-col items-center justify-center text-muted-foreground animate-pulse">
+          <RefreshCw className="h-8 w-8 animate-spin mb-2" />
+          <p>Đang phân tích dữ liệu...</p>
         </div>
       );
     }
 
-    if (!chartData) {
+    if (!chartData || chartData.datasets[0].data.length === 0) {
       return (
-        <div className="h-64 flex items-center justify-center">
-          <p className="text-muted-foreground">Không có dữ liệu biểu đồ</p>
+        <div className="h-72 flex flex-col items-center justify-center text-muted-foreground bg-accent/10 rounded-lg border border-dashed">
+          <BarChart3 className="h-10 w-10 mb-2 opacity-50" />
+          <p>Chưa có dữ liệu biểu đồ cho kỳ này</p>
         </div>
       );
     }
 
-    const chartOptions = {
+    const commonOptions: ChartOptions<any> = {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          position: 'top' as const,
-        },
+        legend: { position: 'top' },
         tooltip: {
           callbacks: {
-            label: function(context: any) {
+            label: (context: any) => {
               let label = context.dataset.label || '';
-              if (label) {
-                label += ': ';
-              }
-              label += formatCurrency(context.parsed.y || context.parsed);
+              if (label) label += ': ';
+              label += formatCurrency(context.parsed.y !== undefined ? context.parsed.y : context.parsed);
               return label;
             }
           }
         }
       },
-      scales: chartData.type !== 'doughnut' ? {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            callback: function(value: any) {
-              return formatCurrency(value);
-            }
-          }
-        }
-      } : undefined,
     };
 
+    const lineBarOptions = {
+        ...commonOptions,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: (value: any) => {
+                        if (value >= 1000000) return (value / 1000000).toFixed(1) + 'M';
+                        if (value >= 1000) return (value / 1000).toFixed(0) + 'k';
+                        return value;
+                    }
+                }
+            }
+        }
+    };
+
+    // Chuẩn hóa dữ liệu để tránh lỗi Chart.js
     const data = {
       labels: chartData.labels,
       datasets: chartData.datasets.map(dataset => ({
         ...dataset,
-        data: dataset.data.map(item => typeof item === 'number' ? item : 0)
+        // Đảm bảo data là số
+        data: dataset.data.map(d => Number(d) || 0)
       }))
     };
 
     switch (chartData.type) {
-      case 'line':
-        return <Line data={data} options={chartOptions} />;
-      case 'bar':
-        return <Bar data={data} options={chartOptions} />;
-      case 'doughnut':
-        return <Doughnut data={data} options={chartOptions} />;
-      default:
-        return <div>Loại biểu đồ không được hỗ trợ</div>;
+      case 'line': return <Line data={data} options={lineBarOptions} />;
+      case 'bar': return <Bar data={data} options={lineBarOptions} />;
+      case 'doughnut': return <Doughnut data={data} options={commonOptions} />;
+      default: return <div className="h-72 flex items-center justify-center">Loại biểu đồ không hỗ trợ</div>;
     }
   };
 
-  
-
-  // Error state
+  // --- Render Error State ---
   if (error) {
     return (
       <Layout>
-        <div className="max-w-6xl mx-auto p-6">
-          <div className="text-center py-12">
-            <div className="text-red-500 text-lg mb-4">{error}</div>
-            <Button onClick={handleRefresh} className="gradient-primary text-white">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Thử lại
-            </Button>
+        <div className="max-w-6xl mx-auto p-6 text-center py-20">
+          <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-100 mb-4">
+            <RefreshCw className="h-8 w-8 text-red-600" />
           </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Đã có lỗi xảy ra</h2>
+          <p className="text-red-500 mb-6">{error}</p>
+          <Button onClick={handleRefresh} className="gradient-primary text-white">
+            Thử lại
+          </Button>
         </div>
       </Layout>
     );
@@ -297,166 +298,160 @@ const Reports = () => {
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto p-6">
-        {/* Header (giữ nguyên) */}
-        <div className="flex justify-between items-center mb-6">
+      <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+        
+        {/* --- Header & Actions --- */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold mb-2">Báo cáo chi tiêu</h1>
-            <p className="text-muted-foreground">
-              Theo dõi và phân tích thói quen chi tiêu của bạn
-              {stats.period && (
-                <span className="text-sm block mt-1">
-                  Kỳ: {new Date(stats.period.startDate).toLocaleDateString('vi-VN')} - {new Date(stats.period.endDate).toLocaleDateString('vi-VN')}
-                  {stats.period.expenseCount && ` • ${stats.period.expenseCount} giao dịch`}
-                </span>
-              )}
+            <h1 className="text-3xl font-bold mb-1">Báo cáo tài chính</h1>
+            <p className="text-muted-foreground text-sm">
+              {stats.period ? (
+                <>Kỳ báo cáo: <span className="font-medium text-foreground">{formatDate(stats.period.startDate)} - {formatDate(stats.period.endDate)}</span></>
+              ) : "Đang tải dữ liệu..."}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button 
-              onClick={handleRefresh} 
-              variant="outline" 
-              size="sm"
-              className="flex items-center gap-2"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Làm mới
+          
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleRefresh} variant="outline" size="sm" className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> 
+              <span className="hidden sm:inline">Làm mới</span>
             </Button>
-            <Button variant="outline" onClick={() => handleExport("excel")}>
-              <Download className="mr-2 h-4 w-4" />
-              Excel
+            <Button variant="outline" size="sm" onClick={() => handleExport("excel")} className="gap-2">
+              <Download className="h-4 w-4" /> Excel
             </Button>
-            <Button
-              onClick={() => handleExport("pdf")}
-              className="bg-primary text-white hover:bg-primary/90"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              PDF
+            <Button size="sm" onClick={() => handleExport("pdf")} className="gradient-primary text-white gap-2 shadow-sm">
+              <Download className="h-4 w-4" /> PDF
             </Button>
           </div>
         </div>
 
-        {/* Summary Cards (giữ nguyên) */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <Card className="border-2 hover:shadow-elegant transition-all">
+        {/* --- Summary Cards --- */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card 1: Tổng chi tiêu */}
+          <Card className="hover:shadow-md transition-all border-l-4 border-l-primary">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Tổng chi tiêu
-              </CardTitle>
-              <TrendingDown className="h-4 w-4 text-primary" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Tổng chi tiêu (Lũy kế)</CardTitle>
+              <Wallet className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-primary mb-1">
-                {formatCurrency(stats.totalExpenses)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Tất cả các khoản chi từ trước đến nay
+              <div className="text-2xl font-bold text-primary">{formatCurrency(stats.totalExpenses)}</div>
+              <p className="text-xs text-muted-foreground mt-1">Toàn bộ thời gian</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Chi tiêu kỳ này */}
+          <Card className="hover:shadow-md transition-all border-l-4 border-l-blue-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Chi tiêu kỳ này</CardTitle>
+              <Calendar className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats.periodExpenses)}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {stats.period?.expenseCount || 0} giao dịch phát sinh
               </p>
             </CardContent>
           </Card>
 
-          <Card className="border-2 hover:shadow-elegant transition-all">
+          {/* Card 3: Trung bình ngày (Cải tiến mới) */}
+          <Card className="hover:shadow-md transition-all border-l-4 border-l-green-500">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Chi tiêu trong kỳ
-              </CardTitle>
-              <Calendar className="h-4 w-4 text-secondary" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">Trung bình ngày</CardTitle>
+              <TrendingDown className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-secondary mb-1">
-                {formatCurrency(stats.monthlyExpenses)}
+              <div className="text-2xl font-bold text-green-600">
+                {formatCurrency(stats.statistics?.averageDaily || 0)}
               </div>
-              <p className="text-xs text-muted-foreground">
-                {stats.period ? "Kỳ báo cáo hiện tại" : "Tháng hiện tại"}
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">Trong kỳ báo cáo</p>
+            </CardContent>
+          </Card>
+
+          {/* Card 4: Chi lớn nhất (Cải tiến mới) */}
+          <Card className="hover:shadow-md transition-all border-l-4 border-l-orange-500">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Khoản chi lớn nhất</CardTitle>
+              <ArrowUpRight className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">
+                {formatCurrency(stats.statistics?.maxExpense || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">1 lần giao dịch</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Biểu đồ thực tế */}
-        <Card className="border-2 hover:shadow-elegant transition-all mb-6">
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Biểu đồ chi tiêu</CardTitle>
-              <Select value={chartType} onValueChange={handleChartTypeChange}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Chọn loại biểu đồ" />
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* --- Chart Section --- */}
+          <Card className="lg:col-span-2 shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg">Biểu đồ phân tích</CardTitle>
+              <Select value={chartType} onValueChange={setChartType}>
+                <SelectTrigger className="w-[160px] h-9">
+                  <SelectValue placeholder="Loại biểu đồ" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="monthly">
-                    <div className="flex items-center gap-2">
-                      <LineChart className="h-4 w-4" />
-                      Theo tháng
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="category">
-                    <div className="flex items-center gap-2">
-                      <PieChart className="h-4 w-4" />
-                      Theo danh mục
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="daily">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4" />
-                      Theo ngày
-                    </div>
-                  </SelectItem>
+                  <SelectItem value="monthly"><div className="flex gap-2 items-center"><LineChart className="h-4 w-4"/> Theo tháng</div></SelectItem>
+                  <SelectItem value="category"><div className="flex gap-2 items-center"><PieChart className="h-4 w-4"/> Theo danh mục</div></SelectItem>
+                  <SelectItem value="daily"><div className="flex gap-2 items-center"><BarChart3 className="h-4 w-4"/> Theo ngày</div></SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              {renderChart()}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Category Breakdown (giữ nguyên) */}
-        <Card className="border-2 hover:shadow-elegant transition-all">
-          <CardHeader>
-            <CardTitle>Phân bổ chi tiêu theo danh mục</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {stats.categoryBreakdown.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground">
-                  Chưa có dữ liệu chi tiêu trong kỳ này
-                </p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80 w-full mt-2">
+                {renderChart()}
               </div>
-            ) : (
-              <div className="space-y-4">
-                {stats.categoryBreakdown.map((cat, index) => (
-                  <div key={cat.id || index} className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium flex items-center gap-2">
-                        {cat.icon && <span>{cat.icon}</span>}
-                        {cat.name}
-                      </span>
-                      <div className="text-right">
-                        <span className="font-semibold text-primary">
-                          {formatCurrency(cat.amount)}
+            </CardContent>
+          </Card>
+
+          {/* --- Category Breakdown --- */}
+          <Card className="shadow-sm flex flex-col h-full">
+            <CardHeader>
+              <CardTitle className="text-lg">Top chi tiêu</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-auto pr-2 custom-scrollbar">
+              {stats.categoryBreakdown.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-sm">
+                  <PieChart className="h-8 w-8 mb-2 opacity-50" />
+                  Chưa có dữ liệu
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {stats.categoryBreakdown.map((cat, index) => (
+                    <div key={cat.id || index} className="group">
+                      <div className="flex justify-between items-center text-sm mb-1.5">
+                        <span className="font-medium flex items-center gap-2">
+                          <span className="text-lg">{cat.icon || "📁"}</span>
+                          {cat.name}
                         </span>
-                        <span className="text-sm text-muted-foreground ml-2">
-                          ({cat.percentage.toFixed(1)}%)
-                        </span>
+                        <div className="text-right">
+                          <div className="font-bold text-gray-900">{formatCurrency(cat.amount)}</div>
+                        </div>
+                      </div>
+                      
+                      {/* Progress Bar with Color */}
+                      <div className="w-full bg-secondary/30 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-1000 ease-out relative"
+                          style={{ 
+                            width: `${cat.percentage}%`,
+                            backgroundColor: cat.color_hex || '#3b82f6' 
+                          }}
+                        >
+                            {/* Hiển thị % ngay trên thanh nếu đủ rộng */}
+                        </div>
+                      </div>
+                      <div className="text-xs text-muted-foreground text-right mt-1">
+                        Chiếm {cat.percentage.toFixed(1)}% tổng chi
                       </div>
                     </div>
-                    <div className="w-full bg-accent rounded-full h-2 overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full transition-all"
-                        style={{ 
-                          width: `${cat.percentage}%`,
-                          backgroundColor: cat.color_hex || undefined 
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </Layout>
   );

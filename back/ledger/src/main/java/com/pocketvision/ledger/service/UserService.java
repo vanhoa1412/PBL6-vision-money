@@ -21,27 +21,28 @@ public class UserService {
         return userRepository.findById(id);
     }
 
-    public User updateUser(Long id, User updatedUser) {
+    public record UpdateUserRequest(String fullName, String avatarUrl) {}
+
+    public User updateUser(Long id, UpdateUserRequest request) {
         return userRepository.findById(id)
                 .map(user -> {
-                    user.setFullName(updatedUser.getFullName());
-                    user.setAvatarUrl(updatedUser.getAvatarUrl());
+                    if (request.fullName() != null) user.setFullName(request.fullName());
+                    if (request.avatarUrl() != null) user.setAvatarUrl(request.avatarUrl());
+                    
                     user.setUpdatedAt(LocalDateTime.now());
                     return userRepository.save(user);
                 })
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
     }
 
     public void changePassword(Long id, String currentPassword, String newPassword) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
         
-        // Kiểm tra mật khẩu hiện tại
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
             throw new RuntimeException("Mật khẩu hiện tại không đúng");
         }
         
-        // Cập nhật mật khẩu mới
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);
@@ -49,7 +50,8 @@ public class UserService {
 
     public void updateUserSettings(Long id, Map<String, Object> settings) {
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng"));
+        
         
         user.setUpdatedAt(LocalDateTime.now());
         userRepository.save(user);

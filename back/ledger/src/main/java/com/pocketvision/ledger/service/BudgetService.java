@@ -7,6 +7,7 @@ import java.util.Optional;
 
 public interface BudgetService {
     List<Budget> getAllBudgets(Long userId);
+    List<Budget> getBudgetsByMonth(Long userId, String monthYear); 
     Optional<Budget> getBudget(Long id);
     Budget createBudget(Budget budget);
     Budget updateBudget(Long id, Budget updatedBudget);

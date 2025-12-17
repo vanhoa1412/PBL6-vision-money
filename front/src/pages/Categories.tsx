@@ -3,8 +3,10 @@ import Layout from "@/components/Layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tag, Plus, Trash2, Edit, X } from "lucide-react";
+import { Tag, Plus, Trash2, Edit, X, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+// QUAN TRỌNG: Import axiosClient để tự động xử lý Token
+import axiosClient from "@/lib/axios-client";
 
 interface Category {
   id: number;
@@ -17,72 +19,86 @@ interface Category {
 
 const Categories: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
+  
+  // State form
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("🏷️");
   const [color, setColor] = useState("#4f46e5");
-  const [editingId, setEditingId] = useState<number | null>(null); // <— thêm trạng thái edit
+  const [editingId, setEditingId] = useState<number | null>(null);
+  
+  // State loading
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const { toast } = useToast();
 
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const userId = user?.id;
 
   useEffect(() => {
-    loadCategories();
-  }, []);
+    if (userId) {
+      loadCategories();
+    }
+  }, [userId]);
 
   const loadCategories = async () => {
     try {
-      const res = await fetch(`http://localhost:8080/api/categories?userId=${userId}`, {
-        credentials: "include",
+      setIsLoading(true);
+      // Sử dụng axiosClient (không cần http://localhost:8080)
+      const res = await axiosClient.get(`/categories`, {
+        params: { userId }
       });
-      if (!res.ok) throw new Error("Không tải được danh mục");
-      const data = await res.json();
-      setCategories(data);
-    } catch (err) {
-      toast({ title: "Lỗi tải danh mục", description: String(err), variant: "destructive" });
+      setCategories(res.data);
+    } catch (err: any) {
+      console.error(err);
+      toast({ 
+        title: "Lỗi tải danh mục", 
+        description: "Không thể kết nối đến server.", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleAddOrUpdate = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!name.trim()) {
-      toast({ title: "Lỗi", description: "Vui lòng nhập tên danh mục." });
+      toast({ title: "Lỗi", description: "Vui lòng nhập tên danh mục.", variant: "destructive" });
       return;
     }
 
     try {
+      setIsSubmitting(true);
       const isEditing = editingId !== null;
-      const url = isEditing
-        ? `http://localhost:8080/api/categories/${editingId}`
-        : "http://localhost:8080/api/categories";
-      const method = isEditing ? "PUT" : "POST";
+      
+      const payload = {
+        userId,
+        name,
+        colorHex: color,
+        icon,
+      };
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          userId,
-          name,
-          colorHex: color,
-          icon,
-        }),
-      });
+      if (isEditing) {
+        // Gọi API PUT
+        await axiosClient.put(`/categories/${editingId}`, payload);
+        toast({ title: "Đã cập nhật danh mục!" });
+      } else {
+        // Gọi API POST
+        await axiosClient.post(`/categories`, payload);
+        toast({ title: "Đã thêm danh mục mới!" });
+      }
 
-      if (!res.ok) throw new Error(isEditing ? "Cập nhật thất bại" : "Tạo danh mục thất bại");
-
-      toast({
-        title: isEditing ? "Đã cập nhật!" : "Thành công!",
-        description: isEditing ? "Danh mục đã được sửa." : "Đã thêm danh mục mới!",
-      });
-
-      setName("");
-      setIcon("🏷️");
-      setColor("#4f46e5");
-      setEditingId(null);
+      // Reset form
+      handleCancelEdit();
+      // Reload lại list
       loadCategories();
-    } catch (err) {
-      toast({ title: "Lỗi", description: String(err), variant: "destructive" });
+
+    } catch (err: any) {
+      const msg = err.response?.data || "Có lỗi xảy ra.";
+      toast({ title: "Lỗi", description: msg, variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -103,15 +119,13 @@ const Categories: React.FC = () => {
   const handleDelete = async (id: number) => {
     if (!confirm("Bạn có chắc muốn xóa danh mục này?")) return;
     try {
-      const res = await fetch(`http://localhost:8080/api/categories/${id}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Xóa danh mục thất bại");
+      await axiosClient.delete(`/categories/${id}`);
       toast({ title: "Đã xóa", description: "Danh mục đã được xóa." });
-      loadCategories();
-    } catch (err) {
-      toast({ title: "Lỗi", description: String(err), variant: "destructive" });
+      
+      // Cập nhật UI ngay lập tức không cần gọi lại API
+      setCategories(prev => prev.filter(c => c.id !== id));
+    } catch (err: any) {
+      toast({ title: "Lỗi", description: "Không thể xóa danh mục này (có thể đang được sử dụng).", variant: "destructive" });
     }
   };
 
@@ -119,48 +133,63 @@ const Categories: React.FC = () => {
     <Layout>
       <div className="max-w-4xl mx-auto p-6">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">Danh mục</h1>
-          <div className="text-muted-foreground">Tổng: {categories.length}</div>
+          <div>
+            <h1 className="text-2xl font-bold">Quản lý danh mục</h1>
+            <p className="text-muted-foreground">Tạo và quản lý các loại chi tiêu của bạn</p>
+          </div>
+          <Button variant="outline" size="icon" onClick={loadCategories} title="Làm mới">
+             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         {/* Form thêm / sửa */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <form onSubmit={handleAddOrUpdate} className="flex gap-3 flex-wrap">
-              <Input
-                placeholder="Tên danh mục"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-              <Input
-                placeholder="Icon (emoji)"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                className="w-24"
-              />
-              <Input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="w-16"
-              />
+        <Card className="mb-8 border-2 shadow-sm">
+          <CardContent className="p-6">
+            <h3 className="font-semibold mb-4">{editingId ? "Chỉnh sửa danh mục" : "Thêm danh mục mới"}</h3>
+            <form onSubmit={handleAddOrUpdate} className="flex gap-4 flex-wrap items-end">
+              <div className="flex-1 min-w-[200px]">
+                <Input
+                  placeholder="Tên danh mục (Ví dụ: Ăn uống)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="w-24">
+                <Input
+                  placeholder="Icon"
+                  value={icon}
+                  onChange={(e) => setIcon(e.target.value)}
+                  className="text-center"
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="w-20">
+                <Input
+                  type="color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className="h-10 p-1 cursor-pointer"
+                  disabled={isSubmitting}
+                />
+              </div>
 
               {editingId ? (
-                <>
-                  <Button type="submit" className="flex items-center bg-green-600 hover:bg-green-700">
+                <div className="flex gap-2">
+                  <Button type="submit" className="bg-green-600 hover:bg-green-700" disabled={isSubmitting}>
                     <Edit className="mr-2 h-4 w-4" /> Lưu
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    className="flex items-center"
                     onClick={handleCancelEdit}
+                    disabled={isSubmitting}
                   >
                     <X className="mr-2 h-4 w-4" /> Hủy
                   </Button>
-                </>
+                </div>
               ) : (
-                <Button type="submit" className="flex items-center">
+                <Button type="submit" className="gradient-primary text-white" disabled={isSubmitting}>
                   <Plus className="mr-2 h-4 w-4" /> Thêm
                 </Button>
               )}
@@ -170,30 +199,37 @@ const Categories: React.FC = () => {
 
         {/* Danh sách danh mục */}
         <div className="grid gap-3">
-          {categories.length === 0 ? (
-            <Card>
-              <CardContent className="p-6 text-center">
-                <Tag className="mx-auto mb-3 h-6 w-6 text-muted-foreground" />
-                <p className="text-muted-foreground">Chưa có danh mục nào.</p>
+          {isLoading && categories.length === 0 ? (
+             <p className="text-center text-muted-foreground">Đang tải dữ liệu...</p>
+          ) : categories.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="p-8 text-center">
+                <Tag className="mx-auto mb-3 h-8 w-8 text-muted-foreground/50" />
+                <p className="text-muted-foreground">Chưa có danh mục nào. Hãy tạo mới ngay!</p>
               </CardContent>
             </Card>
           ) : (
             categories.map((cat) => (
-              <Card key={cat.id} className="flex items-center justify-between p-4">
-                <div className="flex items-center gap-3">
-                  <div className="text-2xl">{cat.icon}</div>
+              <Card key={cat.id} className="flex items-center justify-between p-4 hover:shadow-md transition-all">
+                <div className="flex items-center gap-4">
+                  <div 
+                    className="h-12 w-12 rounded-full flex items-center justify-center text-2xl bg-opacity-10"
+                    style={{ backgroundColor: `${cat.colorHex}20` }}
+                  >
+                    {cat.icon || "🏷️"}
+                  </div>
                   <div>
-                    <div className="font-medium">{cat.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {cat.colorHex} • ID: {cat.id}
+                    <div className="font-bold text-lg" style={{ color: cat.colorHex }}>{cat.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      ID: {cat.id} • Màu: {cat.colorHex}
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(cat)}>
-                    <Edit className="h-4 w-4" />
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(cat)}>
+                    <Edit className="h-4 w-4 text-primary" />
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(cat.id)}>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(cat.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
