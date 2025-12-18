@@ -1,12 +1,25 @@
 package com.pocketvision.ledger.model;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
-import jakarta.persistence.*;
-import lombok.Data;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.Data;
 
 @Entity
 @Table(name = "invoices")
@@ -33,7 +46,7 @@ public class Invoice {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method")
-    private PaymentMethod paymentMethod = PaymentMethod.CASH; // Mặc định tiền mặt nếu AI không trả về
+    private PaymentMethod paymentMethod = PaymentMethod.CASH; 
 
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
@@ -47,7 +60,6 @@ public class Invoice {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    // Quan hệ 1-N với InvoiceItem
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference // Để tránh lỗi vòng lặp vô hạn khi convert sang JSON
     private List<InvoiceItem> items = new ArrayList<>();

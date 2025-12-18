@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+application.properties
+temp\auth
+temp\Budget
+temp\expense
+temp\invoice

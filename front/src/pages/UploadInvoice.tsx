@@ -44,9 +44,7 @@ const UploadInvoice = () => {
     }
   };
 
-  // Hàm xử lý chính: Validate và Upload
   const handleProcessFile = async (file: File) => {
-    // 1. Kiểm tra đăng nhập
     if (!user?.id) {
       toast({ 
         title: "Chưa đăng nhập", 
@@ -57,8 +55,7 @@ const UploadInvoice = () => {
       return;
     }
 
-    // 2. Validate loại file
-    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg'];
     if (!validTypes.includes(file.type)) {
       toast({
         title: "Định dạng không hỗ trợ",
@@ -84,10 +81,9 @@ const UploadInvoice = () => {
       // 4. Chuẩn bị FormData
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("userId", user.id); // Gửi userId để backend biết ai upload
+      formData.append("userId", user.id);
 
       // 5. Gọi API Backend (Spring Boot)
-      // Endpoint này sẽ gọi tiếp sang Server AI để OCR
       const response = await axiosClient.post("/invoices/upload", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
@@ -107,7 +103,15 @@ const UploadInvoice = () => {
 
     } catch (error: any) {
       console.error("Upload error:", error);
-      const errorMsg = error.response?.data?.message || "Không thể phân tích hóa đơn. Vui lòng thử lại.";
+      let errorMsg = "Không thể phân tích hóa đơn. Vui lòng thử lại.";
+      
+      if (error.response?.data) {
+          if (typeof error.response.data === 'string') {
+              errorMsg = error.response.data;
+          } else if (error.response.data.message) {
+              errorMsg = error.response.data.message;
+          }
+      }
       
       toast({
         title: "Lỗi xử lý",
@@ -131,7 +135,7 @@ const UploadInvoice = () => {
 
         <Card className="shadow-md border-2 border-dashed border-gray-200">
           <CardHeader>
-            <CardTitle className="text-xl text-center">Tải ảnh hoặc PDF</CardTitle>
+            <CardTitle className="text-xl text-center">Tải ảnh</CardTitle>
             <CardDescription className="text-center">
               Hệ thống sẽ tự động trích xuất Tên quán, Ngày giờ, Tổng tiền và Danh sách món ăn.
             </CardDescription>
@@ -139,7 +143,6 @@ const UploadInvoice = () => {
           
           <CardContent>
             {isUploading ? (
-              // --- Giao diện Loading khi đang xử lý ---
               <div className="flex flex-col items-center justify-center py-16 text-center animate-in fade-in zoom-in duration-300">
                 <div className="relative">
                   <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse"></div>
@@ -166,7 +169,7 @@ const UploadInvoice = () => {
                   id="file-upload"
                   type="file"
                   className="hidden"
-                  accept=".pdf,.jpg,.jpeg,.png"
+                  accept=".jpg,.jpeg,.png"
                   onChange={handleChange}
                 />
                 
@@ -191,7 +194,7 @@ const UploadInvoice = () => {
                 </Button>
                 
                 <div className="mt-8 flex gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center"><CheckCircle className="h-3 w-3 mr-1 text-green-500"/> JPG, PNG, PDF</span>
+                  <span className="flex items-center"><CheckCircle className="h-3 w-3 mr-1 text-green-500"/> JPG, PNG</span>
                   <span className="flex items-center"><CheckCircle className="h-3 w-3 mr-1 text-green-500"/> Max 10MB</span>
                 </div>
               </div>

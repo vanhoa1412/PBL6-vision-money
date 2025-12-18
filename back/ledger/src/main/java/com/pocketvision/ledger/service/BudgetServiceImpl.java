@@ -2,6 +2,7 @@ package com.pocketvision.ledger.service;
 
 import com.pocketvision.ledger.model.Budget;
 import com.pocketvision.ledger.model.Expense;
+import com.pocketvision.ledger.model.Notification;
 import com.pocketvision.ledger.repository.BudgetRepository;
 import com.pocketvision.ledger.repository.ExpenseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,13 @@ public class BudgetServiceImpl implements BudgetService {
 
     @Autowired
     private ExpenseRepository expenseRepository;
+
+    @Autowired
+    private NotificationService notificationService;
+
+    // ========================================================================
+    // CÁC PHƯƠNG THỨC LẤY DỮ LIỆU (READ)
+    // ========================================================================
 
     @Override
     public List<Budget> getAllBudgets(Long userId) {
@@ -44,29 +52,35 @@ public class BudgetServiceImpl implements BudgetService {
         return budget;
     }
 
+    // ========================================================================
+    // CÁC PHƯƠNG THỨC THAY ĐỔI DỮ LIỆU (WRITE)
+    // ========================================================================
+
     @Override
     @Transactional
     public Budget createBudget(Budget budget) {
-        if (budget.getLimitAmount() == null) {
-            throw new IllegalArgumentException("Vui lòng nhập số tiền ngân sách");
+        if (budget.getLimitAmount() == null || budget.getLimitAmount() <= 0) {
+            throw new IllegalArgumentException("Hạn mức ngân sách phải lớn hơn 0");
         }
-        if (budget.getLimitAmount() <= 0) {
-            throw new IllegalArgumentException("Ngân sách phải lớn hơn 0");
+        if (budget.getMonthYear() == null || !budget.getMonthYear().matches("^\\d{4}-\\d{2}$")) {
+            throw new IllegalArgumentException("Định dạng tháng không hợp lệ (yyyy-MM)");
         }
 
         Optional<Budget> existing = budgetRepository.findByUserIdAndCategoryIdAndMonthYear(
                 budget.getUserId(), budget.getCategoryId(), budget.getMonthYear()
         );
         if (existing.isPresent()) {
-            throw new IllegalArgumentException("Ngân sách cho danh mục này trong tháng đã tồn tại");
+            throw new IllegalArgumentException("Ngân sách cho danh mục này trong tháng " + budget.getMonthYear() + " đã tồn tại.");
         }
 
-        budget.setSpentAmount(0.0);
+        Double currentSpent = calculateTotalSpentForBudget(budget);
+        budget.setSpentAmount(currentSpent);
+
         Budget savedBudget = budgetRepository.save(budget);
-        
-        updateSpentAmount(savedBudget);
-        
-        return budgetRepository.findById(savedBudget.getId()).orElse(savedBudget);
+
+        checkAndNotify(savedBudget);
+
+        return savedBudget;
     }
 
     @Override
@@ -76,15 +90,19 @@ public class BudgetServiceImpl implements BudgetService {
                 .orElseThrow(() -> new IllegalArgumentException("Không tìm thấy ngân sách"));
 
         if (updatedBudget.getLimitAmount() == null || updatedBudget.getLimitAmount() <= 0) {
-            throw new IllegalArgumentException("Số tiền không hợp lệ");
+            throw new IllegalArgumentException("Hạn mức mới không hợp lệ");
         }
 
         existing.setLimitAmount(updatedBudget.getLimitAmount());
         
-        Budget updated = budgetRepository.save(existing);
-        updateSpentAmount(updated);
+        Double currentSpent = calculateTotalSpentForBudget(existing);
+        existing.setSpentAmount(currentSpent);
+
+        Budget saved = budgetRepository.save(existing);
+
+        checkAndNotify(saved);
         
-        return budgetRepository.findById(updated.getId()).orElse(updated);
+        return saved;
     }
 
     @Override
@@ -95,10 +113,17 @@ public class BudgetServiceImpl implements BudgetService {
         budgetRepository.deleteById(id);
     }
 
+    // ========================================================================
+    // CÁC HÀM HỖ TRỢ (PRIVATE HELPERS)
+    // ========================================================================
+
     private void updateSpentAmount(Budget budget) {
         Double totalSpent = calculateTotalSpentForBudget(budget);
-        budget.setSpentAmount(totalSpent);
-        budgetRepository.save(budget);
+        
+        if (Double.compare(totalSpent, budget.getSpentAmount()) != 0) {
+            budget.setSpentAmount(totalSpent);
+            budgetRepository.save(budget);
+        }
     }
 
     private Double calculateTotalSpentForBudget(Budget budget) {
@@ -115,7 +140,39 @@ public class BudgetServiceImpl implements BudgetService {
                     .mapToDouble(Expense::getTotalAmount)
                     .sum();
         } catch (Exception e) {
+            System.err.println("Lỗi tính toán ngân sách (ID: " + budget.getId() + "): " + e.getMessage());
             return 0.0;
+        }
+    }
+
+    private void checkAndNotify(Budget budget) {
+        if (budget.getLimitAmount() <= 0) return;
+
+        double percentage = (budget.getSpentAmount() / budget.getLimitAmount()) * 100;
+
+        try {
+            if (percentage >= 100) {
+                // Đã thêm tham số Title (tham số thứ 2)
+                notificationService.createNotification(
+                    budget.getUserId(),
+                    "Vỡ ngân sách!", // Title
+                    String.format("CẢNH BÁO: Ngân sách tháng %s đã vượt quá %.0f%% hạn mức!", budget.getMonthYear(), percentage),
+                    Notification.NotificationType.BUDGET_WARNING,
+                    budget.getId()
+                );
+            } 
+            else if (percentage >= 80) {
+                // Đã thêm tham số Title (tham số thứ 2)
+                notificationService.createNotification(
+                    budget.getUserId(),
+                    "Cảnh báo giới hạn", // Title
+                    String.format("Cẩn thận! Bạn đã sử dụng %.0f%% ngân sách tháng %s.", percentage, budget.getMonthYear()),
+                    Notification.NotificationType.BUDGET_WARNING,
+                    budget.getId()
+                );
+            }
+        } catch (Exception e) {
+            System.err.println("Lỗi gửi thông báo ngân sách: " + e.getMessage());
         }
     }
 }

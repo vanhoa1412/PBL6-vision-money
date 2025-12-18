@@ -9,13 +9,25 @@ import {
   FileText,
   BarChart3,
   Bell,
-  User,
+  User as UserIcon,
   LogOut,
+  Settings, // Thêm icon Settings
+  ChevronDown
 } from "lucide-react";
 import { storage } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
-import axios from "axios";
+import axiosClient from "@/lib/axios-client"; 
+
+// [MỚI] Import Dropdown Menu (Đảm bảo bạn đã có component này trong dự án)
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface LayoutProps {
   children: ReactNode;
@@ -38,10 +50,8 @@ const Layout = ({ children }: LayoutProps) => {
       img.onload = () => setAvatarUrl(url);
       img.onerror = () => setAvatarUrl(null);
 
-      // Fetch unread notifications count
       fetchUnreadCount();
       
-      // GIẢM polling: mỗi 30 giây thay vì real-time
       const interval = setInterval(fetchUnreadCount, 30000);
       return () => clearInterval(interval);
     } else {
@@ -52,17 +62,17 @@ const Layout = ({ children }: LayoutProps) => {
 
   const fetchUnreadCount = useCallback(async () => {
     try {
-      const userId = Number(localStorage.getItem("userId"));
+      const userId = Number(localStorage.getItem("userId")) || user?.id;
       if (userId) {
-        const response = await axios.get(
-          `http://localhost:8080/api/notifications/unread-count?userId=${userId}`
-        );
-        setUnreadCount(response.data.count);
+        const response = await axiosClient.get("/notifications/unread-count", {
+            params: { userId: userId }
+        });
+        setUnreadCount(response.data); 
       }
     } catch (error) {
       console.error("Error fetching unread count:", error);
     }
-  }, []);
+  }, [user]);
 
   const handleLogout = () => {
     storage.user.remove();
@@ -105,7 +115,7 @@ const Layout = ({ children }: LayoutProps) => {
             </span>
           </Link>
 
-          {/* Navigation */}
+          {/* Navigation (Desktop) */}
           <nav className="hidden lg:flex gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -137,43 +147,54 @@ const Layout = ({ children }: LayoutProps) => {
             })}
           </nav>
 
-          {/* User section */}
+          {/* User Dropdown Menu */}
           <div className="flex items-center gap-3">
-            <Link
-              to="/profile"
-              className="flex items-center gap-3 hover:opacity-80 transition-all"
-            >
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={user?.fullName || "Avatar"}
-                  className="h-10 w-10 rounded-full border border-gray-300 object-cover shadow-sm"
-                />
-              ) : (
-                <div className="h-10 w-10 flex items-center justify-center rounded-full bg-gray-200">
-                  <User className="h-5 w-5 text-gray-600" />
-                </div>
-              )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 overflow-hidden border border-gray-200 hover:opacity-80 transition-opacity focus-visible:ring-0">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={user?.fullName || "Avatar"}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center bg-gray-100">
+                      <UserIcon className="h-5 w-5 text-gray-500" />
+                    </div>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
               
-            </Link>
-
-            <Button
-              variant="ghost"
-              onClick={handleLogout}
-              className="hidden sm:flex"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Đăng xuất
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              className="sm:hidden"
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user?.fullName}</p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user?.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuItem onClick={() => navigate("/profile")}>
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  <span>Hồ sơ cá nhân</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuItem onClick={() => navigate("/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Cài đặt</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Đăng xuất</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>

@@ -46,7 +46,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             userEmail = jwtUtils.extractEmail(jwt); 
         } catch (Exception e) {
-            // Nếu token lỗi format hoặc hết hạn, cho qua để Spring Security xử lý (sẽ trả về 403)
             filterChain.doFilter(request, response);
             return;
         }
